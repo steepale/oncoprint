@@ -1,14 +1,15 @@
 # Script based on: http://bioconductor.org/packages/devel/bioc/vignettes/ComplexHeatmap/inst/doc/s8.oncoprint.html
 
 setwd("/Users/Alec/Documents/Bioinformatics/MDV_Project/oncoprint")
-source("https://bioconductor.org/biocLite.R")
-biocLite("ComplexHeatmap")
+#source("https://bioconductor.org/biocLite.R")
+#biocLite("ComplexHeatmap")
 library(ComplexHeatmap)
 
 # Load the numpy generated SNV mutation array via a tab seperate file (contains header) into R
 mat_snvs = read.table("./data/oncoprint_somatic_snv_array_geneid-x_tumors-y.txt", header = TRUE, stringsAsFactors=FALSE, sep = "\t")
 somatic_mut_gene_labels = read.table("./data/somatic_nonsyn_snv_indel_mutated_genes_renamed.txt")
-rownames(mat_snvs) = somatic_mut_gene_labels$V1
+# Make the row names unique with make.names
+rownames(mat_snvs) = make.names(somatic_mut_gene_labels$V1, unique=TRUE)
 mat_snvs = as.matrix(mat_snvs)
 mat_snvs[mat_snvs=="1"]<-"SNV"
 mat_snvs[mat_snvs=="0"]<-""
@@ -16,7 +17,8 @@ mat_snvs[mat_snvs=="0"]<-""
 # Load the numpy generated INDEL mutation array via a tab seperate file (contains header) into R
 mat_indels = read.table("./data/oncoprint_somatic_indel_array_geneid-x_tumors-y.txt", header = TRUE, stringsAsFactors=FALSE, sep = "\t")
 somatic_mut_gene_labels = read.table("./data/somatic_nonsyn_snv_indel_mutated_genes_renamed.txt")
-rownames(mat_indels) = somatic_mut_gene_labels$V1
+# Make the row names unique with make.names
+rownames(mat_indels) = make.names(somatic_mut_gene_labels$V1, unique=TRUE)
 mat_indels = as.matrix(mat_indels)
 mat_indels[mat_indels=="1"]<-"INDEL"
 mat_indels[mat_indels=="0"]<-""
@@ -29,14 +31,13 @@ mat_final <- replace(mat_final, mat_final == "SNV;", "SNV")
 mat_final <- replace(mat_final, mat_final == ";INDEL", "INDEL")
 
 # Load the genes of interest file for all genes
-#genes_interest_counts = read.table("./data/genes_of_interest_somatic_snvs_and_indels_final.txt", header = FALSE, stringsAsFactors=FALSE, sep = "\t")
+genes_interest_counts = read.table("./data/genes_of_interest_somatic_snvs_and_indels_final.txt", header = FALSE, stringsAsFactors=FALSE, sep = "\t")
 
 # Load gene of interest for specific pathways
 # Calcium regulation pathway
 #genes_interest_counts = read.table("./data/ca_regulation_somatic_snvs_indels.txt", header = FALSE, stringsAsFactors=FALSE, sep = "\t")
 # Fanconi Anemia pathway
-genes_interest_counts = read.table("./data/fanconi_anemia_somatic_snvs_indels.txt", header = FALSE, stringsAsFactors=FALSE, sep = "\t")
-
+#genes_interest_counts = read.table("./data/fanconi_anemia_somatic_snvs_indels.txt", header = FALSE, stringsAsFactors=FALSE, sep = "\t")
 
 colnames(genes_interest_counts) = c("GENE", "TOTAL_COHORT_MUTS")
 # Genes with at least one mutation
@@ -45,7 +46,7 @@ genes_of_interest_int = genes_interest_counts[genes_interest_counts$TOTAL_COHORT
 #genes_of_interest = genes_of_interest[1:50]
 # OR Selecti genes with gene name annotation
 #genes_of_interest_int = genes_interest_counts[!grepl("ENSGALG", genes_interest_counts$GENE), ]
-genes_of_interest = genes_of_interest_int[1:4, 'GENE']
+genes_of_interest = genes_of_interest_int[1:30, 'GENE']
 
 # Final Matrix
 mat_oncoprint = mat_final[genes_of_interest, ]
@@ -85,9 +86,9 @@ ht = oncoPrint(mat_oncoprint,
                                            nrow = 1, title_position = "leftcenter"))
 
 # Save the oncoprint for top 30 mutated genes
-#pdf("./figures/oncoprint_nonsyn_somatic_snvs_indels.pdf")
-#plot <- draw(ht, heatmap_legend_side = "bottom")     
-#dev.off()
+pdf("./figures/oncoprint_nonsyn_somatic_snvs_indels.pdf")
+plot <- draw(ht, heatmap_legend_side = "bottom")     
+dev.off()
 
 # Save the oncoprint for Ca regulation
 #pdf("./figures/ca_regulation_somatic_snvs_indels.pdf")
@@ -95,7 +96,7 @@ ht = oncoPrint(mat_oncoprint,
 #dev.off()
 
 # Save the oncoprint for Fanconi Anemia
-pdf("./figures/fanconi_anemia_somatic_snvs_indels.pdf")
-plot <- draw(ht, heatmap_legend_side = "bottom")     
-dev.off()
+#pdf("./figures/fanconi_anemia_somatic_snvs_indels.pdf")
+#plot <- draw(ht, heatmap_legend_side = "bottom")     
+#dev.off()
 

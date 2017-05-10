@@ -30,20 +30,11 @@ cd /home/proj/MDW_genomics/steepale/oncoprint
 ## Annotated somatic gene fusions
 #/home/proj/MDW_genomics/steepale/gene_fusions/data/chimeric_junctions_filtered_annotated.txt
 
-# Create reference files for array script
-# Genes mutated via non-synonymous SNVs
-grep -v "^#" /home/proj/MDW_genomics/steepale/pathway_analysis/results/somatic_snvs_final.txt | \
-cut -f8 | sort | uniq > /home/users/a.steep/databases/samples/somatic_nonsyn_snv_mutated_genes.txt
-# Genes mutated via non-synonymous INDELs
-grep -v "^#" /home/proj/MDW_genomics/steepale/pathway_analysis/results/somatic_indels_final.txt | \
-cut -f8 | sort | uniq > /home/users/a.steep/databases/samples/somatic_nonsyn_indel_mutated_genes.txt
-# Genes mutated via gene fusions
-(grep -v "^#" /home/proj/MDW_genomics/steepale/gene_fusions/data/chimeric_junctions_filtered_annotated.txt | cut -f2; \
-grep -v "^#" /home/proj/MDW_genomics/steepale/gene_fusions/data/chimeric_junctions_filtered_annotated.txt | cut -f3) | \
-sort | uniq > /home/users/a.steep/databases/samples/somatic_gene_fusion_genes_ensembl_gene_name.txt
-
 # Create an array in python
-python ./scripts/create_oncoprint_somatic_snv_array.py
+python ./scripts/create_oncoprint_somatic_snv_array.py \
+/home/proj/MDW_genomics/steepale/illumina_validation/data/somatic_snvs_and_indels_final_priority.txt \
+./data/oncoprint_somatic_snv_array_geneid-x_tumors-y.txt \
+./data/oncoprint_somatic_indel_array_geneid-x_tumors-y.txt
 
 # ./scripts/create_oncoprint_somatic_snv_array.py
 ###################################
@@ -51,17 +42,17 @@ import sys
 import os
 import numpy
 
+# Infile
+snv_indel_file = sys.argv[1]
+
 # Reference files
 tumor_birds_file = "/home/users/a.steep/databases/samples/tumor_sample_dnaseq_list_NNN-N_SN.txt"
-germline_birds_file = "/home/users/a.steep/databases/samples/germline_sample_dnaseq_list_NNN-N_SN.txt"
-snv_file = open("/home/proj/MDW_genomics/steepale/pathway_analysis/results/somatic_snvs_final.txt")
-indel_file = open("/home/proj/MDW_genomics/steepale/pathway_analysis/results/somatic_indels_final.txt")
-snv_genes_file = open("/home/users/a.steep/databases/samples/somatic_nonsyn_snv_mutated_genes.txt")
-indel_genes_file = open("/home/users/a.steep/databases/samples/somatic_nonsyn_indel_mutated_genes.txt")
+
+# Outfiles
 mut_genes_rename_file = open("./data/somatic_nonsyn_snv_indel_mutated_genes_renamed.txt", 'w')
-snv_array_file = "./data/oncoprint_somatic_snv_array_geneid-x_tumors-y.txt"
-indel_array_file = "./data/oncoprint_somatic_indel_array_geneid-x_tumors-y.txt"
-snv_indel_file = open("/home/proj/MDW_genomics/steepale/pathway_analysis/results/somatic_snvs_and_indels_final.txt")
+snv_array_file = sys.argv[2]
+indel_array_file = sys.argv[3]
+genes_of_interest_file = open("./data/genes_of_interest_somatic_snvs_and_indels_final.int", 'w')
 
 # Create a unique list of all tumor samples
 tumors = set()
@@ -70,86 +61,89 @@ for tumor_bird in open(tumor_birds_file):
 	tumors.add(tumor_bird)
 tumors = list(tumors)
 tumors.sort()
-#print(tumors)
 
 # Create and fill null dictionary for gene_id to gene_symbol relationship
 gene_id2gene_symbol = {}
 # Create and fill null dictionary to say if gene in sample is mutated via SNV
 snv_status = {}
-for snv_gene in snv_genes_file:
-	snv_gene = snv_gene.rstrip()
-	snv_status[snv_gene] = []
-
 # Create and fill null dictionary to say if gene in sample is mutated via INDEL
 indel_status = {}
-for indel_gene in indel_genes_file:
-	indel_gene = indel_gene.rstrip()
-	indel_status[indel_gene] = []
+
+# Write a header for the genes of interest file
+genes_of_interest_file.write('##GENE:' + '\t' + 'Either chicken ensembl gene name, chicken ensembl gene id, or high confidence human orthologue gene name(s)')
+genes_of_interest_file.write('##TSN_GENE:'+' '+'Number of tumors with mutations in gene' + '\n')
+genes_of_interest_file.write('##CGC_STATUS:'+' '+'Whether the mutated gene is in COSMICs Cancer Gene Consensus' + '\n')
+genes_of_interest_file.write('#GENE'+'\t'+'TSN_GENE'+'\t'+'CGC_STATUS'+'\n')
 
 # Create a unique list of all gene_ids
 gene_ids = set()
-for snv_indel_line in snv_indel_file:
-	snv_indel_line = snv_indel_line.rstrip()
-	if snv_indel_line[0] != '#':
-		snv_indel_col = snv_indel_line.split('\t')
-		snv_indel_gene_id = snv_indel_col[7]
-		snv_indel_gene_symbol = snv_indel_col[6]
-		snv_indel_tsn = int(snv_indel_col[8])
-		snv_indel_sample = snv_indel_col[9]
-		gene_ids.add(snv_indel_gene_id)
+for line in open(snv_indel_file):
+	line = line.rstrip()
+	if line[0] != '#':
+		col = line.split('\t')
+		ref = col[3]
+		alt = col[4]
+		tsn = int(col[12])
+		tsn_var = int(col[11])
+		gene_id = col[9]
+		gene_symbol = col[8]
+		samples = col[13]
+		ortholog = col[10]
+		cgc = col[17]
+		gene_ids.add(gene_id)
 		# Add to the dictionary of gene_id2gene_symbol
-		if snv_indel_gene_symbol != 'NA':
-			gene_id2gene_symbol[snv_indel_gene_id] = snv_indel_gene_symbol
-		elif snv_indel_gene_symbol == 'NA':
-			gene_id2gene_symbol[snv_indel_gene_id] = snv_indel_gene_id
+		if gene_symbol != 'NA':
+			gene_id2gene_symbol[gene_id] = gene_symbol
+		elif gene_symbol == 'NA':
+			if ortholog != 'NA':
+				gene_id2gene_symbol[gene_id] = ortholog
+			else:
+				gene_id2gene_symbol[gene_id] = gene_id
+		# Write to genes of interest file
+		genes_of_interest_file.write(gene_id2gene_symbol[gene_id]+'\t'+str(tsn)+'\t'+cgc+'\n')
+		# Fill in dictionaries to say if gene in sample is mutated via SNV or INDEL
+		if tsn_var == 1:
+			# For SNVs
+			if len(ref) == len(alt):
+				if gene_id in snv_status.keys():
+					snv_status[gene_id].append(samples)
+				elif gene_id not in snv_status.keys():
+					snv_status[gene_id] = [samples]
+			# For INDELs
+			elif len(ref) != len(alt):
+				if gene_id in indel_status.keys():
+					indel_status[gene_id].append(samples)
+				elif gene_id not in indel_status.keys():
+					indel_status[gene_id] = [samples]
+		elif tsn_var > 1:
+			for n in range(tsn_var):
+				# For SNVs
+				if len(ref) == len(alt):
+					if gene_id in snv_status.keys():
+						snv_status[gene_id].append(samples.split(';')[n])
+					elif gene_id not in snv_status.keys():
+						snv_status[gene_id] = [samples.split(';')[n]]
+				# For INDELs
+				elif len(ref) != len(alt):
+					if gene_id in indel_status.keys():
+						indel_status[gene_id].append(samples.split(';')[n])
+					elif gene_id not in indel_status.keys():
+						indel_status[gene_id] = [samples.split(';')[n]]
 gene_ids = list(gene_ids)
 gene_ids.sort()
-#print(gene_ids)
 
-# Fill in dictionary to say if gene in sample is mutated via SNV
-for snv_line in snv_file:
-	snv_line = snv_line.rstrip()
-	if snv_line[0] != '#':
-		snv_col = snv_line.split('\t')
-		snv_gene_id = snv_col[7]
-		snv_gene_symbol = snv_col[6]
-		snv_tsn = int(snv_col[8])
-		snv_sample = snv_col[9]
-		# Add to the dictionary of SNV mutated genes
-		if snv_tsn == 1:
-			snv_status[snv_gene_id].append(snv_sample)
-		elif snv_tsn > 1:
-			sample = []
-			for n in range(snv_tsn):
-				sample.append(n)
-				sample[n] = snv_sample.split('|')[n]
-				snv_status[snv_gene_id].append(sample[n])
-
-# Fill in dictionary to say if gene in sample is mutated via INDEL
-for indel_line in indel_file:
-	indel_line = indel_line.rstrip()
-	if indel_line[0] != '#':
-		indel_col = indel_line.split('\t')
-		indel_gene_id = indel_col[7]
-		indel_gene_symbol = indel_col[6]
-		indel_tsn = int(indel_col[8])
-		indel_sample = indel_col[9]
-		# Add to the dictionary of indel mutated genes
-		if indel_tsn == 1:
-			indel_status[indel_gene_id].append(indel_sample)
-		elif indel_tsn > 1:
-			sample = []
-			for n in range(indel_tsn):
-				sample.append(n)
-				sample[n] = indel_sample.split('|')[n]
-				indel_status[indel_gene_id].append(sample[n])
+# Close genes of interest file
+genes_of_interest_file.close()
 
 # Test if dictionary is accurate
-#for gene_id, tumors in snv_status.items():
+#for gene_id, tumors in indel_status.items():
 #	print('gene_id: ' + gene_id + '\t' + 'tumors: ' + str(tumors))
 
+# Create a new file with gene symbols
 for gene_id in gene_ids:
 	mut_genes_rename_file.write(gene_id2gene_symbol[gene_id] + '\n')
+# Close file
+mut_genes_rename_file.close()
 
 # Create and fill SNV mutation array
 onco_snvs = numpy.zeros((len(gene_ids), len(tumors)))
@@ -182,17 +176,165 @@ numpy.savetxt(indel_array_file, onco_indels, fmt='%i', delimiter='\t', newline='
 os.system('sed -i "s/^# //" ./data/oncoprint_somatic_indel_array_geneid-x_tumors-y.txt')
 
 # Test for IKZF1
-for (gene_id_mp, gene_id) in enumerate(gene_ids):
-	for (tumor_mp, tumor) in enumerate(tumors):
-		if gene_id == 'ENSGALG00000013086':
-			print(onco_snvs[gene_id_mp, ])
-			print(onco_indels[gene_id_mp, ])
+#for (gene_id_mp, gene_id) in enumerate(gene_ids):
+	#for (tumor_mp, tumor) in enumerate(tumors):
+		#if gene_id == 'ENSGALG00000013086':
+			#print(onco_snvs[gene_id_mp, ])
+			#print(onco_indels[gene_id_mp, ])
 
 ###################################
 
+# Sort the genes-of-interest file and determine a threshold for which genes are interesting
+(grep "^#" ./data/genes_of_interest_somatic_snvs_and_indels_final.int; \
+grep -v "^#" ./data/genes_of_interest_somatic_snvs_and_indels_final.int | \
+sort | uniq | sort -k2,2nr) | grep -v -e "^ENSGALG" -e ";" > \
+./data/genes_of_interest_somatic_snvs_and_indels_final.txt
+
+# Create the mut_genes_name file
+#grep -v "^#" ./data/genes_of_interest_somatic_snvs_and_indels_final.txt | \
+#cut -f1 > ./data/somatic_nonsyn_snv_indel_mutated_genes_renamed.txt
+
+# Send the files to macbook pro for oncoprint generation in R Studio
+# From (/Users/Alec/Documents/Bioinformatics/MDV_Project/oncoprint)
+# Transfer the SNV mutation status array
+rsync -avp \
+a.steep@barcelona.binfo.wzw.tum.de:/home/proj/MDW_genomics/steepale/oncoprint/data/oncoprint_somatic_snv_array_geneid-x_tumors-y.txt \
+./data/
+# Transfer the INDEL mutation status array
+rsync -avp \
+a.steep@barcelona.binfo.wzw.tum.de:/home/proj/MDW_genomics/steepale/oncoprint/data/oncoprint_somatic_indel_array_geneid-x_tumors-y.txt \
+./data/
+# Transfer mutated gene labels (x-axis for R matrices)
+rsync -avp \
+a.steep@barcelona.binfo.wzw.tum.de:/home/proj/MDW_genomics/steepale/oncoprint/data/somatic_nonsyn_snv_indel_mutated_genes_renamed.txt \
+./data/
+# Transfer the genes of interest file
+rsync -avp \
+a.steep@barcelona.binfo.wzw.tum.de:/home/proj/MDW_genomics/steepale/oncoprint/data/genes_of_interest_somatic_snvs_and_indels_final.txt \
+./data/
+
+
+# ./scripts/oncoprint_mutation_landscape_figure.R
+#########################################
+# Script based on: http://bioconductor.org/packages/devel/bioc/vignettes/ComplexHeatmap/inst/doc/s8.oncoprint.html
+
+setwd("/Users/Alec/Documents/Bioinformatics/MDV_Project/oncoprint")
+source("https://bioconductor.org/biocLite.R")
+biocLite("ComplexHeatmap")
+library(ComplexHeatmap)
+
+# Load the numpy generated SNV mutation array via a tab seperate file (contains header) into R
+mat_snvs = read.table("./data/oncoprint_somatic_snv_array_geneid-x_tumors-y.txt", header = TRUE, stringsAsFactors=FALSE, sep = "\t")
+somatic_mut_gene_labels = read.table("./data/somatic_nonsyn_snv_indel_mutated_genes_renamed.txt")
+rownames(mat_snvs) = somatic_mut_gene_labels$V1
+mat_snvs = as.matrix(mat_snvs)
+mat_snvs[mat_snvs=="1"]<-"SNV"
+mat_snvs[mat_snvs=="0"]<-""
+
+# Load the numpy generated INDEL mutation array via a tab seperate file (contains header) into R
+mat_indels = read.table("./data/oncoprint_somatic_indel_array_geneid-x_tumors-y.txt", header = TRUE, stringsAsFactors=FALSE, sep = "\t")
+somatic_mut_gene_labels = read.table("./data/somatic_nonsyn_snv_indel_mutated_genes_renamed.txt")
+rownames(mat_indels) = somatic_mut_gene_labels$V1
+mat_indels = as.matrix(mat_indels)
+mat_indels[mat_indels=="1"]<-"INDEL"
+mat_indels[mat_indels=="0"]<-""
+
+# Combine the SNV and INDEL Matrices
+mat_final = matrix(paste(mat_snvs,mat_indels,sep=";"),nrow=nrow(mat_snvs),ncol=ncol(mat_snvs))
+dimnames(mat_final) <- list(rownames(mat_indels), colnames(mat_indels))
+mat_final <- replace(mat_final, mat_final == ";", "")
+mat_final <- replace(mat_final, mat_final == "SNV;", "SNV")
+mat_final <- replace(mat_final, mat_final == ";INDEL", "INDEL")
+
+# Load the genes of interest file for all genes
+#genes_interest_counts = read.table("./data/genes_of_interest_somatic_snvs_and_indels_final.txt", header = FALSE, stringsAsFactors=FALSE, sep = "\t")
+
+# Load gene of interest for specific pathways
+# Calcium regulation pathway
+#genes_interest_counts = read.table("./data/ca_regulation_somatic_snvs_indels.txt", header = FALSE, stringsAsFactors=FALSE, sep = "\t")
+# Fanconi Anemia pathway
+genes_interest_counts = read.table("./data/fanconi_anemia_somatic_snvs_indels.txt", header = FALSE, stringsAsFactors=FALSE, sep = "\t")
+
+
+colnames(genes_interest_counts) = c("GENE", "TOTAL_COHORT_MUTS")
+# Genes with at least one mutation
+genes_of_interest_int = genes_interest_counts[genes_interest_counts$TOTAL_COHORT_MUTS > 0, ]
+# Alter the genes of interest length
+#genes_of_interest = genes_of_interest[1:50]
+# OR Selecti genes with gene name annotation
+#genes_of_interest_int = genes_interest_counts[!grepl("ENSGALG", genes_interest_counts$GENE), ]
+genes_of_interest = genes_of_interest_int[1:4, 'GENE']
+
+# Final Matrix
+mat_oncoprint = mat_final[genes_of_interest, ]
+
+# Set the parameters for contructing the oncoprint figure
+alter_fun = list(background = function(x, y, w, h, v) 
+{grid.rect(x, y, w-unit(0.5, "mm"), h-unit(0.5, "mm"), 
+           gp = gpar(fill = "#CCCCCC", col = NA))}, 
+SNV = function(x, y, w, h) 
+{grid.rect(x, y, w*0.33, h*1.00, 
+           gp = gpar(fill = "blue", col = NA))},
+INDEL = function(x, y, w, h) 
+{grid.rect(x, y, w*0.66, h*0.90, 
+           gp = gpar(fill = "#008000", col = NA))})
+#AMP = function(x, y, w, h) {
+#        grid.rect(x, y, w-unit(0.5, "mm"), h*0.50, gp = gpar(fill = "orange", col = NA))},
+#DEL = function(x, y, w, h) {
+#        grid.rect(x, y, w-unit(0.5, "mm"), h*0.50, gp = gpar(fill = "red", col = NA))})
+
+col = c("SNV" = "blue", "INDEL" = "#008000")
+
+ht = oncoPrint(mat_oncoprint,
+               get_type = function(x) strsplit(x, ";")[[1]],
+               alter_fun = alter_fun, 
+               col = col,
+               show_pct = TRUE,
+               pct_gp = gpar(fontsize = 6),
+               show_column_names = TRUE,
+               row_names_gp = gpar(fontsize = 6),
+               column_names_gp = gpar(fontsize = 10),
+               remove_empty_columns = FALSE,
+               axis_gp = gpar(fontsize = 8),
+               column_title = "Candidate Driver Gene Mutation Profiles Across MD Lymphomas",
+               column_title_gp = gpar(fontsize = 18),
+               heatmap_legend_param = list(title = "Alternations", at = c("SNV", "INDEL"), 
+                                           labels = c("Non-Synonymous SNV", "Non-Synonymous INDEL"), 
+                                           nrow = 1, title_position = "leftcenter"))
+
+# Save the oncoprint for top 30 mutated genes
+#pdf("./figures/oncoprint_nonsyn_somatic_snvs_indels.pdf")
+#plot <- draw(ht, heatmap_legend_side = "bottom")     
+#dev.off()
+
+# Save the oncoprint for Ca regulation
+#pdf("./figures/ca_regulation_somatic_snvs_indels.pdf")
+#plot <- draw(ht, heatmap_legend_side = "bottom")     
+#dev.off()
+
+# Save the oncoprint for Fanconi Anemia
+pdf("./figures/fanconi_anemia_somatic_snvs_indels.pdf")
+plot <- draw(ht, heatmap_legend_side = "bottom")     
+dev.off()
+
+#########################################
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # Create a reference file of the sample titles for gene fusions
 grep -v "^#" /home/proj/MDW_genomics/steepale/gene_fusions/data/chimeric_junctions_filtered_annotated.txt | cut -f5 | sort | uniq | sed "s/;/\n/g" | sort | uniq >/home/users/a.steep/databases/samples/tumor_sample_rnaseq_list_gene_fusions_017NNN-N_redundent_1s.txt
-
 
 # Create an array in python
 python ./scripts/create_oncoprint_somatic_gene_fusion_array.py
@@ -288,73 +430,8 @@ for (gene_id_mp, gene_id) in enumerate(fusion_genes):
 
 
 
-# Generate a gene of interest file
-# This file is generated based on frequency of mutations per gene
 
-python ./scripts/genes_of_interest.py \
-/home/proj/MDW_genomics/steepale/pathway_analysis/results/somatic_snvs_and_indels_final.txt \
-./data/genes_of_interest_somatic_snvs_and_indels_final.int
 
-# ./scripts/genes_of_interest.py
-###################################
-import sys
-import os
-
-# in- and out-file
-infile = sys.argv[1]
-outfile = open(sys.argv[2], 'w')
-
-# Reference files
-# Unique list of genes (either ensemble ID or gene symbol)
-mut_genes_rename_file = "./data/somatic_nonsyn_snv_indel_mutated_genes_renamed.txt"
-
-# Header for outfile
-outfile.write('#GENE' + '\t' + 'TOTAL_MUTS_ACROSS_SAMPLES' + '\n')
-
-# Read each line of the input file (collective filtered somatic SNVs and INDELs) and mutations per gene
-for mut_gene in open(mut_genes_rename_file):
-	mut_gene = mut_gene.rstrip()
-	interest_genes_tsn = 0
-	for in_line in open(infile):
-		if in_line[0] != '#':
-			in_line = in_line.rstrip()
-			in_col = in_line.split('\t')
-			in_chr = in_col[0]
-			in_pos = in_col[1]
-			in_symbol = in_col[6]
-			in_geneid = in_col[7]
-			in_tsn = int(in_col[8])
-			if mut_gene == in_symbol or mut_gene == in_geneid:
-				interest_genes_tsn = interest_genes_tsn + in_tsn
-	outfile.write(mut_gene + '\t' + str(interest_genes_tsn) + '\n')
-# Close the outfile
-outfile.close()
-
-###################################
-
-# Sort the file and determine a threshold for which genes are interesting
-(grep "^#" ./data/genes_of_interest_somatic_snvs_and_indels_final.int; \
-grep -v "^#" ./data/genes_of_interest_somatic_snvs_and_indels_final.int | \
-sort -k2,2nr) > ./data/genes_of_interest_somatic_snvs_and_indels_final.txt
-
-# Send the files to macbook pro for oncoprint generation in R Studio
-# From (/Users/Alec/Documents/Bioinformatics/MDV_Project/oncoprint)
-# Transfer the SNV mutation status array
-rsync -avp \
-a.steep@barcelona.binfo.wzw.tum.de:/home/proj/MDW_genomics/steepale/oncoprint/data/oncoprint_somatic_snv_array_geneid-x_tumors-y.txt \
-./data/
-# Transfer the INDEL mutation status array
-rsync -avp \
-a.steep@barcelona.binfo.wzw.tum.de:/home/proj/MDW_genomics/steepale/oncoprint/data/oncoprint_somatic_indel_array_geneid-x_tumors-y.txt \
-./data/
-# Transfer mutated gene labels (x-axis for R matrices)
-rsync -avp \
-a.steep@barcelona.binfo.wzw.tum.de:/home/proj/MDW_genomics/steepale/oncoprint/data/somatic_nonsyn_snv_indel_mutated_genes_renamed.txt \
-./data/
-# Transfer the genes of interest file
-rsync -avp \
-a.steep@barcelona.binfo.wzw.tum.de:/home/proj/MDW_genomics/steepale/oncoprint/data/genes_of_interest_somatic_snvs_and_indels_final.txt \
-./data/
 
 
 
