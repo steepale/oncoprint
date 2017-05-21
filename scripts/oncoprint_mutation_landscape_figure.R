@@ -50,6 +50,7 @@ genes_of_interest = genes_of_interest_int[1:30, 'GENE']
 
 # Final Matrix
 mat_oncoprint = mat_final[genes_of_interest, ]
+mat_oncoprint = mat_final['IKZF1', ]
 
 # Set the parameters for contructing the oncoprint figure
 alter_fun = list(background = function(x, y, w, h, v) 
@@ -79,14 +80,19 @@ ht = oncoPrint(mat_oncoprint,
                column_names_gp = gpar(fontsize = 10),
                remove_empty_columns = FALSE,
                axis_gp = gpar(fontsize = 8),
-               column_title = "Candidate Driver Gene Mutation Profiles Across MD Lymphomas",
-               column_title_gp = gpar(fontsize = 18),
-               heatmap_legend_param = list(title = "Alternations", at = c("SNV", "INDEL"), 
+               #column_title = "Candidate Driver Gene Mutation Profiles Across MD Lymphomas",
+               #column_title_gp = gpar(fontsize = 18),
+               heatmap_legend_param = list(title = "Somatic Alternations", at = c("SNV", "INDEL"), 
                                            labels = c("Non-Synonymous SNV", "Non-Synonymous INDEL"), 
                                            nrow = 1, title_position = "leftcenter"))
 
 # Save the oncoprint for top 30 mutated genes
 pdf("./figures/oncoprint_nonsyn_somatic_snvs_indels.pdf")
+plot <- draw(ht, heatmap_legend_side = "bottom")     
+dev.off()
+
+# Save the oncoprint for IKZF1
+pdf("./figures/oncoprint_nonsyn_somatic_snvs_indels_IKZF1.pdf")
 plot <- draw(ht, heatmap_legend_side = "bottom")     
 dev.off()
 
